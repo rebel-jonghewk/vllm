@@ -24,6 +24,7 @@ class RequestFuncInput:
     model: str
     best_of: int = 1
     use_beam_search: bool = False
+    ignore_eos: bool = False
 
 
 @dataclass
@@ -237,11 +238,11 @@ async def async_request_openai_completions(
             "best_of": request_func_input.best_of,
             "max_tokens": request_func_input.output_len,
             "stream": True,
+            "ignore_eos": request_func_input.ignore_eos,
         }
         headers = {
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
         }
-
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
 
@@ -264,10 +265,14 @@ async def async_request_openai_completions(
                             latency = time.perf_counter() - st
                         else:
                             data = json.loads(chunk)
-
                             # NOTE: Some completion API might have a last
                             # usage summary response without a token so we
                             # want to check a token was generated
+                            if "choices" not in data:
+                                continue
+                            if "text" not in data["choices"][0]:
+                                continue
+
                             if data["choices"][0]["text"]:
                                 timestamp = time.perf_counter()
                                 # First token

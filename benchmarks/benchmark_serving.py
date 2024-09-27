@@ -123,6 +123,24 @@ def sample_sharegpt_requests(
 
     return filtered_dataset
 
+def sample_fixed_input_requests(
+    num_requests: int,
+    tokenizer: PreTrainedTokenizerBase,
+    input_sequence_length: int,
+    output_sequence_length: int,
+) -> List[Tuple[str, int, int]]:
+    import pdb
+    # Generate random tokens of the specified length
+    random_tokens = [tokenizer.unk_token
+        for _ in range(input_sequence_length - 1)]
+    
+    # Join tokens to form the input sequence string
+    input_sequence = tokenizer.convert_tokens_to_string(random_tokens)
+    # print(tokenizer.pad_token)
+    encoded = tokenizer(input_sequence, add_special_tokens=True)
+    sampled_requests = [(input_sequence, input_sequence_length, output_sequence_length) for _ in range(num_requests)]
+    
+    return sampled_requests
 
 def sample_sonnet_requests(
     dataset_path: str,
@@ -322,6 +340,7 @@ async def benchmark(
     use_beam_search: bool,
     request_rate: float,
     disable_tqdm: bool,
+    ignore_eos: bool,
     profile: bool,
     selected_percentile_metrics: List[str],
     selected_percentiles: List[str],
@@ -341,6 +360,7 @@ async def benchmark(
         output_len=test_output_len,
         best_of=best_of,
         use_beam_search=use_beam_search,
+        ignore_eos=ignore_eos
     )
     test_output = await request_func(request_func_input=test_input)
     if not test_output.success:
@@ -568,6 +588,12 @@ def main(args: argparse.Namespace):
             range_ratio=args.random_range_ratio,
             tokenizer=tokenizer,
         )
+    elif args.dataset_name == "fixed":
+        input_requests = sample_fixed_input_requests(
+                  num_requests=args.num_prompts,
+                  tokenizer=tokenizer,
+                  input_sequence_length=args.sonnet_input_len,
+                  output_sequence_length=args.sonnet_output_len)
 
     else:
         raise ValueError(f"Unknown dataset: {args.dataset_name}")
@@ -585,6 +611,7 @@ def main(args: argparse.Namespace):
             request_rate=args.request_rate,
             disable_tqdm=args.disable_tqdm,
             profile=args.profile,
+            ignore_eos=args.ignore_eos,
             selected_percentile_metrics=args.percentile_metrics.split(","),
             selected_percentiles=[
                 float(p) for p in args.metric_percentiles.split(",")
@@ -668,7 +695,7 @@ if __name__ == "__main__":
         "--dataset-name",
         type=str,
         default="sharegpt",
-        choices=["sharegpt", "sonnet", "random"],
+        choices=["sharegpt", "sonnet", "random", "fixed"],
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument("--dataset-path",
@@ -687,6 +714,12 @@ if __name__ == "__main__":
         help=
         "Name or path of the tokenizer, if not using the default tokenizer.",  # noqa: E501
     )
+    parser.add_argument(
+         "--ignore-eos",
+        type=bool,
+        default=False
+        )
+ 
     parser.add_argument(
         "--best-of",
         type=int,
